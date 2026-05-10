@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+message LoginReq {
+  string open_id = 22;
+  string open_id_type = 23;
+  string login_token = 29;
+  string orign_platform_type = 99;
+}
+
+message BlacklistInfoRes {
+  uint32 ban_reason = 1;
+  uint32 expire_duration = 2;
+  uint32 ban_time = 3;
+}
+
+message LoginQueueInfo {
+  bool allow = 1;
+  uint32 queue_position = 2;
+  uint32 need_wait_secs = 3;
+  bool queue_is_full = 4;
+}
+
+message LoginRes {
+  uint64 account_id = 1;
+  string lock_region = 2;
+  string noti_region = 3;
+  string ip_region = 4;
+  string agora_environment = 5;
+  string new_active_region = 6;
+  repeated string recommend_regions = 7;
+  string token = 8;
+  uint32 ttl = 9;
+  string server_url = 10;
+  uint32 emulator_score = 11;
+  BlacklistInfoRes blacklist = 12;
+  LoginQueueInfo queue_info = 13;
+  string tp_url = 14;
+  uint32 app_server_id = 15;
+  string ano_url = 16;
+  string ip_city = 17;
+  string ip_subdivision = 18;
+}

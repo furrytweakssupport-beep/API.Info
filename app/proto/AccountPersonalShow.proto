@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+message BasicInfo {
+  uint64 accountId = 1;
+  string nickname = 2;
+  uint32 level = 3;
+  uint32 exp = 4;
+  uint32 liked = 5;
+  uint64 createAt = 6;
+  uint64 lastLoginAt = 7;
+  string region = 8;
+}
+
+message ProfileInfo {
+  string signature = 1;
+}
+
+message PetInfo {
+  string name = 1;
+  uint32 level = 2;
+  uint32 exp = 3;
+}
+
+message ClanBasicInfo {
+  string clanName = 1;
+  uint64 clanId = 2;
+  uint32 clanLevel = 3;
+  uint32 memberNum = 4;
+  uint32 capacity = 5;
+}
+
+message AccountPersonalShowInfo {
+  BasicInfo basicInfo = 1;
+  ProfileInfo profileInfo = 2;
+  PetInfo petInfo = 3;
+  ClanBasicInfo clanBasicInfo = 4;
+}

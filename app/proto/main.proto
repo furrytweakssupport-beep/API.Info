@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+message SearchWorkshopCode {
+  string a = 1;
+  int32 b = 2;
+}
+
+message GetPlayerPersonalShow {
+  int64 a = 1;
+  int32 b = 2;
+}
