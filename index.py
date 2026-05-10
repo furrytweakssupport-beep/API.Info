@@ -1,1 +1,3 @@
-from app.main import app
+from app import app
+
+# Vercel expects a variable named "app"
