@@ -1,46 +1,87 @@
 import asyncio
-import time
 import httpx
 import json
+import base64
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from collections import defaultdict
+
 from google.protobuf import json_format
+from Crypto.Cipher import AES
 
 from proto import FreeFire_pb2, main_pb2, AccountPersonalShow_pb2
-from Crypto.Cipher import AES
-import base64
+
 
 app = Flask(__name__)
 CORS(app)
 
 # ===== CONFIG =====
-MAIN_KEY = base64.b64decode('WWcmdGMlREV1aDYlWmNeOA==')
-MAIN_IV = base64.b64decode('Nm95WkRyMjJFM3ljaGpNJQ==')
+MAIN_KEY = base64.b64decode("WWcmdGMlREV1aDYlWmNeOA==")
+MAIN_IV = base64.b64decode("Nm95WkRyMjJFM3ljaGpNJQ==")
 
 USERAGENT = "Dalvik/2.1.0 (Linux; Android 13)"
 RELEASEVERSION = "OB49"
 
 cached_tokens = defaultdict(dict)
 
-# ===== AES =====
-def pad(data):
-    pad_len = 16 - len(data) % 16
+
+# ===== AES ENCRYPT =====
+def pad(data: bytes):
+    pad_len = 16 - (len(data) % 16)
     return data + bytes([pad_len]) * pad_len
 
-def encrypt(data):
+
+def encrypt(data: bytes):
     cipher = AES.new(MAIN_KEY, AES.MODE_CBC, MAIN_IV)
     return cipher.encrypt(pad(data))
+
+
+# ===== SAFE ASYNC RUNNER (IMPORTANT FIX) =====
+def run_async(coro):
+    try:
+        loop = asyncio.get_event_loop()
+
+        if loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                return pool.submit(asyncio.run, coro).result()
+
+        return loop.run_until_complete(coro)
+
+    except RuntimeError:
+        return asyncio.run(coro)
+
 
 # ===== TOKEN =====
 async def get_token():
     url = "https://ffmconnect.live.gop.garenanow.com/oauth/guest/token/grant"
-    payload = "uid=4044218743&password=96A37E2B8D306360A481BBE9552FCD395F2EFDAAD04792D1F0F38AD7ED1706B6&response_type=token&client_type=2&client_secret=2ee44819e9b4598845141067b281621874d0d5d7af9d8f7e00c1e54715b7d1e3&client_id=100067"
 
-    async with httpx.AsyncClient() as client:
+    payload = (
+        "uid=4044218743"
+        "&password=96A37E2B8D306360A481BBE9552FCD395F2EFDAAD04792D1F0F38AD7ED1706B6"
+        "&response_type=token"
+        "&client_type=2"
+        "&client_secret=2ee44819e9b4598845141067b281621874d0d5d7af9d8f7e00c1e54715b7d1e3"
+        "&client_id=100067"
+    )
+
+    async with httpx.AsyncClient(timeout=20) as client:
         r = await client.post(url, data=payload)
-        j = r.json()
-        return j.get("access_token"), j.get("open_id")
+
+        try:
+            j = r.json()
+        except:
+            raise Exception(f"Token API failed: {r.text}")
+
+        token = j.get("access_token")
+        open_id = j.get("open_id")
+
+        if not token or not open_id:
+            raise Exception("Invalid token response")
+
+        return token, open_id
+
 
 # ===== LOGIN =====
 async def login():
@@ -64,7 +105,7 @@ async def login():
         "ReleaseVersion": RELEASEVERSION
     }
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=20) as client:
         r = await client.post(
             "https://loginbp.ggblueshark.com/MajorLogin",
             data=encrypted,
@@ -74,14 +115,22 @@ async def login():
         res = FreeFire_pb2.LoginRes()
         res.ParseFromString(r.content)
 
+        if not res.token or not res.server_url:
+            raise Exception("Login failed (empty response)")
+
         return {
             "token": f"Bearer {res.token}",
             "server": res.server_url
         }
 
+
 # ===== PLAYER INFO =====
 async def fetch_player(uid):
     login_data = await login()
+
+    server = login_data.get("server")
+    if not server:
+        raise Exception("Missing server URL")
 
     proto = main_pb2.GetPlayerPersonalShow()
     proto.a = int(uid)
@@ -96,9 +145,9 @@ async def fetch_player(uid):
         "ReleaseVersion": RELEASEVERSION
     }
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=20) as client:
         r = await client.post(
-            login_data["server"] + "/GetPlayerPersonalShow",
+            f"{server}/GetPlayerPersonalShow",
             data=encrypted,
             headers=headers
         )
@@ -108,7 +157,8 @@ async def fetch_player(uid):
 
         return json_format.MessageToDict(msg, preserving_proto_field_name=True)
 
-# ===== SAFE PARSER =====
+
+# ===== SAFE GET =====
 def safe_get(d, path, default="N/A"):
     try:
         for p in path:
@@ -117,10 +167,12 @@ def safe_get(d, path, default="N/A"):
     except:
         return default
 
-# ===== ROUTE =====
+
+# ===== ROUTES =====
 @app.route("/")
 def home():
     return "API RUNNING"
+
 
 @app.route("/player-info")
 def player():
@@ -130,9 +182,8 @@ def player():
         return jsonify({"error": "UID required"}), 400
 
     try:
-        data = asyncio.run(fetch_player(uid))
+        data = run_async(fetch_player(uid))
 
-        # ===== SAFE DATA EXTRACTION =====
         result = {
             "name": safe_get(data, ["basic_info", "nickname"]),
             "uid": uid,
@@ -150,3 +201,8 @@ def player():
             "error": "Failed to fetch player info",
             "details": str(e)
         }), 500
+
+
+# ===== VERCEL COMPAT (IMPORTANT IF USING SERVERLESS) =====
+def handler(request):
+    return app(request)
